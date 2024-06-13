@@ -176,12 +176,12 @@ static int mhi_netdev_macaddr_check_set(const char * val, const struct kernel_pa
     {
         if (!is_valid_ether_addr(g_mhi_netdev->ndev->dev_addr))
         {      
-            eth_random_addr(g_mhi_netdev->ndev->dev_addr);
+            eth_random_addr((u8 *)g_mhi_netdev->ndev->dev_addr);
             g_mhi_netdev->ndev->addr_assign_type = NET_ADDR_RANDOM;
 
   	    if (!is_valid_ether_addr(g_mhi_netdev->ndev->dev_addr))
             {
-                eth_random_addr(g_mhi_netdev->ndev->dev_addr);
+                eth_random_addr((u8 *)g_mhi_netdev->ndev->dev_addr);
             }
             else
             {
@@ -879,7 +879,7 @@ static int mhi_netdev_enable_iface(struct mhi_netdev *mhi_netdev)
 		rtnl_unlock();
 
 		netif_napi_add(mhi_netdev->ndev, &mhi_netdev->napi,
-			       mhi_netdev_poll, NAPI_POLL_WEIGHT);
+			       mhi_netdev_poll);
 		ret = register_netdev(mhi_netdev->ndev);
 		if (ret) {
 			MSG_ERR("Network device registration failed\n");
