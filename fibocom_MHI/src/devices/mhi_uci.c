@@ -25,6 +25,7 @@
 #include <linux/wait.h>
 #include <linux/uaccess.h>
 #include <linux/tty.h>
+#include <linux/termios.h>
 #include "../core/mhi.h"
 
 #define DEVICE_NAME "mhi"
@@ -132,73 +133,74 @@ static int mhi_queue_inbound(struct uci_dev *uci_dev)
 }
 
 static long mhi_uci_ioctl(struct file *file,
-			  unsigned int cmd,
-			  unsigned long arg)
+                          unsigned int cmd,
+                          unsigned long arg)
 {
-	struct uci_dev *uci_dev = file->private_data;
-	struct mhi_device *mhi_dev = uci_dev->mhi_dev;
-	long ret = -ERESTARTSYS;
+    struct uci_dev *uci_dev = file->private_data;
+    struct mhi_device *mhi_dev = uci_dev->mhi_dev;
+    long ret = -ERESTARTSYS;
 
-	mutex_lock(&uci_dev->mutex);
-	if (uci_dev->enabled) {
-		switch (cmd) {
-		case TCGETS:
-#ifndef TCGETS2
-			ret = kernel_termios_to_user_termios((struct termios __user *)arg, &uci_dev->termios);
-#else
-			ret = kernel_termios_to_user_termios_1((struct termios __user *)arg, &uci_dev->termios);
-#endif
-		break;
+    mutex_lock(&uci_dev->mutex);
+    if (uci_dev->enabled) {
+        switch (cmd) {
+        case TCGETS:
+            if (copy_to_user((struct termios __user *)arg, &uci_dev->termios, sizeof(struct termios))) {
+                ret = -EFAULT;
+            } else {
+                ret = 0;
+            }
+            break;
 
-		case TCSETSF:
-		case TCSETS:
-#ifndef TCGETS2
-			ret = user_termios_to_kernel_termios(&uci_dev->termios, (struct termios __user *)arg);
-#else
-			ret = user_termios_to_kernel_termios_1(&uci_dev->termios, (struct termios __user *)arg);
-#endif
-		break;
+        case TCSETSF:
+        case TCSETS:
+            if (copy_from_user(&uci_dev->termios, (struct termios __user *)arg, sizeof(struct termios))) {
+                ret = -EFAULT;
+            } else {
+                ret = 0;
+            }
+            break;
 
-		case TIOCMSET:
-		case TIOCMBIS:
-		case TIOCMBIC:
-		{
-			uint32_t val;
+        case TIOCMSET:
+        case TIOCMBIS:
+        case TIOCMBIC:
+        {
+            uint32_t val;
+            ret = get_user(val, (uint32_t *)arg);
+            if (ret) {
+                mutex_unlock(&uci_dev->mutex);
+                return ret;
+            }
 
-			ret = get_user(val, (uint32_t *)arg);
-			if (ret)
-				return ret;
-			
-			switch (cmd) {
-			case TIOCMBIS:
-				uci_dev->sigs |= val;
-				break;
-			case TIOCMBIC:
-				uci_dev->sigs &= ~val;
-				break;
-			case TIOCMSET:
-				uci_dev->sigs = val;
-				break;
-			}
-		}
-		break;
+            switch (cmd) {
+            case TIOCMBIS:
+                uci_dev->sigs |= val;
+                break;
+            case TIOCMBIC:
+                uci_dev->sigs &= ~val;
+                break;
+            case TIOCMSET:
+                uci_dev->sigs = val;
+                break;
+            }
+            break;
+        }
 
-		case TIOCMGET:
-			ret = put_user(uci_dev->sigs | TIOCM_RTS, (uint32_t *)arg);
-		break;
+        case TIOCMGET:
+            ret = put_user(uci_dev->sigs | TIOCM_RTS, (uint32_t *)arg);
+            break;
 
-		case TCFLSH:
-			ret = 0;
-		break;
-		
-		default:
-			ret = mhi_ioctl(mhi_dev, cmd, arg);
-		break;
-		}
-	}
-	mutex_unlock(&uci_dev->mutex);
+        case TCFLSH:
+            ret = 0;
+            break;
 
-	return ret;
+        default:
+            ret = mhi_ioctl(mhi_dev, cmd, arg);
+            break;
+        }
+    }
+    mutex_unlock(&uci_dev->mutex);
+
+    return ret;
 }
 
 static int mhi_uci_release(struct inode *inode, struct file *file)
