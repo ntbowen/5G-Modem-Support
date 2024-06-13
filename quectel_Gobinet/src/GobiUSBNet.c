@@ -58,6 +58,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <linux/kernel.h>
 #include <linux/ethtool.h>
 #include <linux/version.h>
+#include <linux/uaccess.h>
 
 #include <net/arp.h>
 #include <net/ip.h>
@@ -306,7 +307,7 @@ static int bridge_arp_reply(struct net_device *net, struct sk_buff *skb, uint br
             reply->ip_summed = CHECKSUM_UNNECESSARY;
             reply->pkt_type = PACKET_HOST;
 
-            netif_rx_ni(reply);
+            netif_rx(reply);;
         }
         return 1;
     }
@@ -335,7 +336,7 @@ static struct sk_buff *bridge_mode_tx_fixup(struct net_device *net, struct sk_bu
 	if (ehdr->h_proto == htons(ETH_P_IP) && iph->protocol == IPPROTO_UDP && iph->saddr == 0x00000000 && iph->daddr == 0xFFFFFFFF) {
 		//if (udp_hdr(skb)->dest == htons(67)) //DHCP Request
 		{
-			memcpy(bridge_mac, ehdr->h_source, ETH_ALEN);
+			memcpy((void *)bridge_mac, ehdr->h_source, ETH_ALEN);
 			pr_info("%s PC Mac Address: %02x:%02x:%02x:%02x:%02x:%02x\n", netdev_name(net),
 				bridge_mac[0], bridge_mac[1], bridge_mac[2], bridge_mac[3], bridge_mac[4], bridge_mac[5]);
 		}
@@ -442,7 +443,7 @@ static ssize_t bridge_ipv4_store(struct device *dev, struct device_attribute *at
 
 	if (is_qmap_netdev(pNet)) {
 		struct qmap_priv *priv = netdev_priv(pNet);
-		priv->m_bridge_ipv4 = simple_strtoul(buf, NULL, 16);
+		priv->m_bridge_ipv4 = (uint)simple_strtoul(buf, NULL, 16);
 	}
 	else {
         struct usbnet * pDev = netdev_priv( pNet );
@@ -944,7 +945,7 @@ static int qmap_register_device(sGobiUSBNet * pDev, u8 offset_id)
 #else
     qmap_net->netdev_ops = &qmap_netdev_ops;
 #endif
-    memcpy (qmap_net->dev_addr, real_dev->dev_addr, ETH_ALEN);
+    memcpy ((void *)qmap_net->dev_addr, real_dev->dev_addr, ETH_ALEN);
 
 #ifdef QUECTEL_BRIDGE_MODE
 	priv->m_bridge_mode = !!(pDev->m_bridge_mode & BIT(offset_id));
@@ -1539,10 +1540,13 @@ static int GobiNetDriverBind(
     /* make MAC addr easily distinguishable from an IP header */
     if ((pDev->net->dev_addr[0] & 0xd0) == 0x40) {
         /*clear this bit wil make usbnet apdater named as usbX(instead if ethX)*/
-        pDev->net->dev_addr[0] |= 0x02;	/* set local assignment bit */
-        pDev->net->dev_addr[0] &= 0xbf;	/* clear "IP" bit */
+        unsigned char new_dev_addr[ETH_ALEN];
+		memcpy(new_dev_addr, pDev->net->dev_addr, ETH_ALEN);
+		new_dev_addr[0] |= 0x02; /* set local assignment bit */
+		new_dev_addr[0] &= 0xbf; /* clear "IP" bit */
+		memcpy((void *)pDev->net->dev_addr, new_dev_addr, ETH_ALEN);
     }
-    memcpy (pDev->net->dev_addr, node_id, sizeof node_id);
+    memcpy ((void *)pDev->net->dev_addr, node_id, sizeof node_id);
     pDev->net->flags &= ~(IFF_BROADCAST | IFF_MULTICAST);
     pDev->net->features |= (NETIF_F_VLAN_CHALLENGED);
 #endif
@@ -2957,7 +2961,7 @@ static int GobiUSBNetProbe(
    memset( &(pGobiDev->mMEID), '0', 14 );
    
    DBG( "Mac Address:\n" );
-   PrintHex( &pGobiDev->mpNetDev->net->dev_addr[0], 6 );
+   PrintHex((void *)&pGobiDev->mpNetDev->net->dev_addr[0], 6);
 
    pGobiDev->mbQMIValid = false;
    memset( &pGobiDev->mQMIDev, 0, sizeof( sQMIDev ) );
