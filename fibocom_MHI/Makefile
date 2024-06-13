@@ -29,7 +29,6 @@ endef
 MAKE_OPTS:= \
 	ARCH="$(LINUX_KARCH)" \
 	CROSS_COMPILE="$(TARGET_CROSS)" \
-	CXXFLAGS="$(TARGET_CXXFLAGS)" \
 	M="$(PKG_BUILD_DIR)" \
 	$(EXTRA_KCONFIG)
 
@@ -41,7 +40,13 @@ endef
 define Build/Compile
 	$(MAKE) -C "$(LINUX_DIR)" \
 		$(MAKE_OPTS) \
+		M=$(PKG_BUILD_DIR) \
 		modules
+endef
+
+define KernelPackage/pcie_mhi_fb/install
+	$(INSTALL_DIR) $(1)/etc/modules.d
+	echo pcie_mhi_fb > $(1)/etc/modules.d/pcie_mhi_fb
 endef
 
 $(eval $(call KernelPackage,pcie_mhi_fb))
